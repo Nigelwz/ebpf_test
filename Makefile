@@ -1,5 +1,5 @@
 DEP := dep
-CLANG ?= clang
+CLANG ?= clang-12
 LLVM_STRIP ?= llvm-strip
 LIBBPF_SRC := $(abspath ./libbpf/src)
 LIBBPF_OBJ := $(abspath $(DEP)/libbpf.a)
@@ -14,7 +14,8 @@ VMLINUX := ./vmlinux/$(ARCH)/vmlinux.h
 INCLUDES := -I$(DEP) -I./libbpf/include/uapi -I$(dir $(VMLINUX))
 CFLAGS := -g -Wall
 ALL_LDFLAGS := $(LDFLAGS) $(EXTRA_LDFLAGS)
-APPS = kprobe
+APPS = tracex5
+#APPS = kprobe
 .PHONY: all
 all: $(APPS)
 .PHONY: clean
@@ -32,12 +33,12 @@ $(LIBBPF_OBJ): $(wildcard $(LIBBPF_SRC)/*.[ch] $(LIBBPF_SRC)/Makefile) | $(DEP)/
 $(BPFTOOL): | $(BPFTOOL_OUTPUT)
 	$(MAKE) ARCH= CROSS_COMPILE= OUTPUT=$(BPFTOOL_OUTPUT)/ -C $(BPFTOOL_SRC) bootstrap
 # Build BPF code
-kprobe.bpf.o: kprobe.bpf.c $(LIBBPF_OBJ) $(wildcard %.h) $(VMLINUX) | $(DEP)
+$(APPS).bpf.o: $(APPS).bpf.c $(LIBBPF_OBJ) $(wildcard %.h) $(VMLINUX) | $(DEP)
 	#$(CLANG) -g -O2 -target bpf -D__TARGET_ARCH_$(ARCH) $(INCLUDES) $(CLANG_BPF_SYS_INCLUDES) -c $(filter %.c,$^) -o $@
-	$(CLANG) -g -O2 -target bpf -D__TARGET_ARCH_$(ARCH) $(INCLUDES) -c kprobe.bpf.c -o kprobe.bpf.o
+	$(CLANG) -g -O2 -target bpf -D__TARGET_ARCH_$(ARCH) $(INCLUDES) $(CLANG_BPF_SYS_INCLUDES) -DCORE -c $(APPS).bpf.c -o $(APPS).bpf.o
 	$(LLVM_STRIP) -g $@ # strip useless DWARF info
 # Generate BPF skeletons
-kprobe.skel.h: kprobe.bpf.o | $(OUTPUT) $(BPFTOOL)
+$(APPS).skel.h: $(APPS).bpf.o | $(OUTPUT) $(BPFTOOL)
 	$(BPFTOOL) gen skeleton $< > $@
 # Build user-space code
 $(patsubst %,./%.o,$(APPS)): %.o: %.skel.h
@@ -45,5 +46,5 @@ $(patsubst %,./%.o,$(APPS)): %.o: %.skel.h
 %.o: %.c $(wildcard %.h) | $(DEP)
 	$(CC) $(CFLAGS) $(INCLUDES) -c $(filter %.c,$^) -o $@
 # Build application binary
-$(APPS): kprobe.o $(LIBBPF_OBJ) | $(DEP)
-	$(CC) $(CFLAGS) $^ $(ALL_LDFLAGS) -lelf -lz -o $@
+$(APPS): $(APPS).o $(LIBBPF_OBJ) | $(DEP)
+	$(CC) -g $(CFLAGS) $^ $(ALL_LDFLAGS) -lelf -lz -o $@
