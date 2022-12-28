@@ -118,17 +118,21 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	/* Attach tracepoint handler */
-	struct bpf_link* linkk = bpf_program__attach( skel->progs.tracepoint__raw_syscalls__sys_enter );
+	struct bpf_link* link = bpf_program__attach( skel->progs.tracepoint__raw_syscalls__sys_enter );
 	//err = kprobe_bpf__attach(skel);
-	if (!linkk) {
+	if (!link) {
 		fprintf(stderr, "failed attached");
 	}
-	struct bpf_link* link = bpf_program__attach(skel->progs.do_exec_binprm);
+	//link = bpf_program__attach(skel->progs.do_exec_binprm);
+	//struct bpf_link* link = bpf_program__attach( skel->progs.tracepoint__raw_syscalls__sys_enter );
+	//if (!link) {
+	//	fprintf(stderr, "failed attached");
+	//}
+	link = bpf_program__attach(skel->progs.do_open);
 	//struct bpf_link* link = bpf_program__attach( skel->progs.tracepoint__raw_syscalls__sys_enter );
 	if (!link) {
 		fprintf(stderr, "failed attached");
 	}
-	
 	if (signal(SIGINT, sig_int) == SIG_ERR) {
 		fprintf(stderr, "can't set signal handler: %s\n", strerror(errno));
 		goto cleanup;

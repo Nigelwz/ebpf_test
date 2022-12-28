@@ -476,7 +476,7 @@ static __always_inline int events_perf_submit(event_data_t *data, u32 id, long r
     //bpf_printk("buff2 =%d",data->buf_off);
     int size = data->buf_off & (MAX_PERCPU_BUFSIZE - 1);
     //bpf_printk("buff3 =%d",data->buf_off);
-    bpf_printk("off_size = %d, size: %d\n", data->buf_off, size); 
+    //bpf_printk("off_size = %d, size: %d\n", data->buf_off, size); 
     void *output_data = data->submit_p->buf;
     return bpf_perf_event_output(data->ctx, &events, BPF_F_CURRENT_CPU, output_data, size);
 }
@@ -487,7 +487,7 @@ init_event_data (event_data_t *data, void *ctx)
     init_context(&data->context, data->task);
     data->ctx = ctx;
     data->buf_off = sizeof(event_context_t);
-    bpf_printk("sz: %d", data->buf_off);
+    //bpf_printk("sz: %d", data->buf_off);
     int buf_idx = SUBMIT_BUF_IDX;
     data->submit_p = bpf_map_lookup_elem(&bufs, &buf_idx);
     if (unlikely(data->submit_p == NULL)) {
@@ -764,7 +764,52 @@ static __always_inline int save_args_str_arr_to_buf(
     }
     return 0;
 }
-
+SEC("kprobe/security_file_open")
+int BPF_KPROBE(do_open)
+{
+    event_data_t data = {};
+    if (!init_event_data(&data, ctx))
+	return 0;
+    
+    struct file* f = (struct file*) PT_REGS_PARM1(ctx);
+    void* filee = get_path_str(&f->f_path);
+     //bpf_printk("f1: %s", filee);
+    unsigned int flag = READ_KERN(f->f_flags);
+    struct mm_struct* p_mm = get_mm_from_task(data.task);
+    struct file* p_file = get_file_from_mm(p_mm);
+    void* strr2 = get_path_str(&p_file->f_path);
+   //  bpf_printk("f2: %d", flag);
+     if (flag & 00000100)
+     {
+	bpf_printk("create, %s", filee);
+	bpf_printk("ps: %s",strr2);
+     }
+     else if ( (flag & 00000002) == 00000002 || (flag & 00000001) == 00000001)
+     {
+	 bpf_printk("modify %s", filee);
+	bpf_printk("ps: %s",strr2);
+     }
+    struct inode * i_node = READ_KERN(f->f_inode);
+    u64 file_sz = READ_KERN(i_node->i_size);
+   // bpf_printk("buf_off: %d", data.buf_off);
+    save_to_submit_buf(&data, &file_sz, sizeof(u64), 0);
+    // - m_time
+    u64 mtime = get_mtime_nanosec_from_file(f);
+    save_to_submit_buf(&data, &mtime, sizeof(u64), 1);
+    // - c time
+    u64 ctime = get_ctime_nanosec_from_file(f);
+    save_to_submit_buf(&data, &ctime, sizeof(u64), 2);
+    // - owner_sid
+    kuid_t owner_sid =  READ_KERN(i_node->i_uid);
+    save_to_submit_buf(&data, &owner_sid.val, sizeof(uid_t), 3);
+    // owner g_sid
+    kgid_t owner_g_sid =  READ_KERN(i_node->i_gid);
+    save_to_submit_buf(&data, &owner_g_sid.val, sizeof(uid_t), 4);
+    save_str_to_buf (&data, (void*) filee, 5);//file path
+     // process name
+    save_str_to_buf (&data, (void*) strr2, 6);//file path
+    return events_perf_submit(&data, SYSCALL_EXECVE, 0);
+}
 #define MAX_ARR_LEN 8192
 SEC("kprobe/exec_binprm")
 int BPF_KPROBE(do_exec_binprm)

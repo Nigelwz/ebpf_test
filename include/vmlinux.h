@@ -433,6 +433,7 @@ struct file {
     struct inode *f_inode;
     const struct file_operations *f_op;
     unsigned int f_flags;
+    mode_t mode;
     void *private_data;
 };
 
